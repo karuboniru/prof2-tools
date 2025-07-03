@@ -140,18 +140,17 @@ build_ipol(const Professor::ParamPoints &param_points,
 
 int main(int argc, char **agrv) {
   auto cfg = parse_options(argc, agrv);
-  auto param_files =
-      std::filesystem::directory_iterator(cfg.scan_dir) |
-      std::views::filter(
-          [](auto &dir_entry) { return dir_entry.is_directory(); }) |
-      std::views::transform([&](auto &dir_entry) {
-        const auto &dir = dir_entry.path();
-        auto param = read_params(dir / cfg.param_file);
-        auto file =
-            TFile::Open((dir / cfg.prediction_file).c_str(), "READONLY");
-        return std::make_pair(param, file);
-      }) |
-      std::ranges::to<std::vector>();
+  auto param_files = std::filesystem::directory_iterator(cfg.scan_dir) |
+                     std::views::filter([](auto &dir_entry) {
+                       return dir_entry.is_directory();
+                     }) |
+                     std::views::transform([&](auto &dir_entry) {
+                       const auto &dir = dir_entry.path();
+                       auto param = read_params(dir / cfg.param_file);
+                       auto filename = dir / cfg.prediction_file;
+                       return std::make_pair(param, filename);
+                     }) |
+                     std::ranges::to<std::vector>();
   std::cout << "Found " << param_files.size()
             << " parameter files in directory " << cfg.scan_dir << '\n';
   // auto param_vector = ;
@@ -166,29 +165,44 @@ int main(int argc, char **agrv) {
       param_files | std::views::values | std::ranges::to<std::vector>();
 
   auto bin_list = read_bin_list(cfg.bin_list);
+  std::vector<std::vector<double>> prediction_values{};
+  prediction_values.resize(bin_list.size());
+  std::ranges::for_each(prediction_values,
+                        [&](auto &vec) { vec.resize(file_vector.size()); });
+  for (auto &&[file_id, file_path] : file_vector | std::views::enumerate) {
+    auto file = TFile::Open(file_path.c_str(), "READ");
+    if (!file || file->IsZombie()) {
+      std::cerr << "Error opening file: " << file_path << "\n";
+      return 1;
+    }
+    for (auto &&[bin_id, bin_info] : bin_list | std::views::enumerate) {
+      auto [name, id] = bin_info;
+      auto hist = file->Get<TH1D>(name.c_str());
+      if (!hist) {
+        std::cerr << "Error: Histogram " << name << " not found in file "
+                  << file->GetName() << '\n';
+        exit(-1);
+      }
+      auto val = hist->GetBinContent(id + 1);
+      if (std::isinf(val) || std::isnan(val)) {
+        std::cerr << "Error: Invalid value " << val << " for histogram " << name
+                  << " in file " << file->GetName() << '\n';
+        exit(-1);
+      }
+      prediction_values[bin_id][file_id] = val;
+    }
+    file->Close();
+    delete file; // Clean up the file pointer
+  }
+  std::cout << "Read " << prediction_values.size() << " bins with "
+            << file_vector.size() << " files.\n";
   auto result_range =
-      bin_list | std::views::transform([&](const auto &bin) {
+      std::views::zip(bin_list, prediction_values) |
+      std::views::transform([&](const auto &bin_pred) {
+        auto bin = std::get<0>(bin_pred);
+        auto values = std::get<1>(bin_pred);
         auto [name, id] = bin;
-        auto value_vector =
-            file_vector | std::views::transform([&](auto &file) {
-              auto hist = file->template Get<TH1D>(name.c_str());
-              if (!hist) {
-                std::cerr << "Error: Histogram " << name
-                          << " not found in file " << file->GetName() << '\n';
-                exit(-1);
-              }
-              auto val = hist->GetBinContent(id + 1);
-              if (std::isinf(val) || std::isnan(val)) {
-                std::cerr << "Error: Invalid value " << val << " for histogram "
-                          << name << " in file " << file->GetName() << '\n';
-                exit(-1);
-              }
-
-              return val;
-            }) |
-            std::ranges::to<std::vector>();
-        return build_ipol(param_points, value_vector, cfg.order, name,
-                          test_params);
+        return build_ipol(param_points, values, cfg.order, name, test_params);
       }) |
       std::ranges::to<std::vector>();
 
