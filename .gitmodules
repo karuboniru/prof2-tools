@@ -1,0 +1,3 @@
+[submodule "professor"]
+	path = professor
+	url = https://gitlab.com/hepcedar/professor.git
