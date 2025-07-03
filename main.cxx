@@ -141,9 +141,6 @@ build_ipol(const Professor::ParamPoints &param_points,
 int main(int argc, char **agrv) {
   auto cfg = parse_options(argc, agrv);
   auto param_files = std::filesystem::directory_iterator(cfg.scan_dir) |
-                     std::views::filter([](auto &dir_entry) {
-                       return dir_entry.is_directory();
-                     }) |
                      std::views::transform([&](auto &dir_entry) {
                        const auto &dir = dir_entry.path();
                        auto param = read_params(dir / cfg.param_file);
