@@ -179,14 +179,15 @@ int main(int argc, char **agrv) {
       auto [name, id] = bin_info;
       auto hist = file->Get<TH1D>(name.c_str());
       if (!hist) {
-        std::cerr << "Error: Histogram " << name << " not found in file "
-                  << file->GetName() << '\n';
+        std::println(std::cerr, "Error: Histogram {} not found in file {}",
+                     name, file->GetName());
         exit(-1);
       }
       auto val = hist->GetBinContent(id + 1);
       if (std::isinf(val) || std::isnan(val)) {
-        std::cerr << "Error: Invalid value " << val << " for histogram " << name
-                  << " in file " << file->GetName() << '\n';
+        std::println(std::cerr,
+                     "Error: Invalid value {} for histogram {} in file {}", val,
+                     name, file->GetName());
         exit(-1);
       }
       prediction_values[bin_id][file_id] = val;
@@ -202,7 +203,8 @@ int main(int argc, char **agrv) {
         auto bin = std::get<0>(bin_pred);
         auto values = std::get<1>(bin_pred);
         auto [name, id] = bin;
-        return build_ipol(param_points, values, cfg.order, name, test_params);
+        return build_ipol(param_points, values, cfg.order,
+                          std::format("{}#{}", name, id), test_params);
       }) |
       std::ranges::to<std::vector>();
 
@@ -225,24 +227,26 @@ int main(int argc, char **agrv) {
                            .begin())
                          .path();
 
-    output_file << "ParamNames: ";
+    std::print(output_file, "ParamNames: ");
     for (auto &&name : read_names(first_run / cfg.param_file)) {
-      output_file << name << " ";
+      std::print(output_file, "{} ", name);
     }
-    output_file << '\n';
-    output_file << "MinParamVals: " << min.str() << '\n';
-    output_file << "MaxParamVals: " << max.str() << '\n';
-    output_file << "Dimension: " << param_points.dim() << '\n';
-    output_file << "---" << '\n';
+    std::println(output_file, "");
+    std::println(output_file, "MinParamVals: {}", min.str());
+    std::println(output_file, "MaxParamVals: {}", max.str());
+    std::println(output_file, "Dimension: {}", param_points.dim());
+    std::println(output_file, "---");
   }
 
-  for (const auto &ipol_str : result_range) {
-    output_file << ipol_str.name() << ": dummy\n";
-    output_file << ipol_str.toString("var") << ' ' << min.str() << max.str()
-                << '\n';
-    output_file << "err: 0 0 " << '\n';
+  for (const auto &[id, ipol_str] : result_range | std::views::enumerate) {
+    std::println(output_file, "{} {} {}", ipol_str.name(), id, id + 1);
+    std::println(output_file, "  {} {} {}", ipol_str.toString("var"), min.str(),
+                 max.str());
+    std::println(output_file, "  err: {} 0 0 {} {}", ipol_str.dim(), min.str(),
+                 max.str());
   }
   output_file.close();
-  std::cout << "Ipols written to " << cfg.output << '\n';
+  // std::cout << "Ipols written to " << cfg.output << '\n';
+  std::println(std::cout, "Ipols written to {}", cfg.output);
   return 0;
 }
