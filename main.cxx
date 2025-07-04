@@ -123,7 +123,7 @@ build_ipol(const Professor::ParamPoints &param_points,
   auto used_vars = values | std::views::drop(test_params.size()) |
                    std::ranges::to<std::vector>();
 
-  auto best_ipol = std::ranges::max(
+  auto best_ipol = std::ranges::min(
       std::views::iota(0, order + 1) | std::views::transform([&](auto i) {
         return Professor::Ipol(param_points, used_vars, i, name);
       }) | std::views::transform([&](auto ipol) {
