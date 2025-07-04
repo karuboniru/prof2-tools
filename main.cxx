@@ -19,8 +19,8 @@ struct config {
   std::string param_file;
   std::string bin_list;
 
-  int order;
-  int n_test{0};
+  int order{};
+  int n_test{};
 
   std::string output;
 
@@ -118,6 +118,8 @@ build_ipol(const Professor::ParamPoints &param_points,
     return Professor::Ipol(param_points, values, order, name);
   }
 
+  // the first test_params.size() of values are the test values
+  // do exclude them from the interpolation
   auto used_vars = values | std::views::drop(test_params.size()) |
                    std::ranges::to<std::vector>();
 
@@ -150,10 +152,12 @@ int main(int argc, char **agrv) {
                      std::ranges::to<std::vector>();
   std::cout << "Found " << param_files.size()
             << " parameter files in directory " << cfg.scan_dir << '\n';
-  // auto param_vector = ;
+  // if cfg.n_test is set, the fitst cfg.n_test points are used as test
+  // so exclude them from the param_points
   Professor::ParamPoints param_points(param_files | std::views::keys |
                                       std::views::drop(cfg.n_test) |
                                       std::ranges::to<std::vector>());
+  // and the test points
   auto test_params = param_files | std::views::keys |
                      std::views::take(cfg.n_test) |
                      std::ranges::to<std::vector>();
@@ -162,10 +166,14 @@ int main(int argc, char **agrv) {
       param_files | std::views::values | std::ranges::to<std::vector>();
 
   auto bin_list = read_bin_list(cfg.bin_list);
+  // outer vector is for bins, inner for files, since the Ipols are built
+  // for each bin and file combination
   std::vector<std::vector<double>> prediction_values{};
   prediction_values.resize(bin_list.size());
   std::ranges::for_each(prediction_values,
                         [&](auto &vec) { vec.resize(file_vector.size()); });
+  // we don't want to open too many files at once, so the outer loop is
+  // for file and inner for bin
   for (auto &&[file_id, file_path] : file_vector | std::views::enumerate) {
     auto file = TFile::Open(file_path.c_str(), "READ");
     if (!file || file->IsZombie()) {
@@ -216,6 +224,7 @@ int main(int argc, char **agrv) {
   std::ofstream output_file(cfg.output);
   if (cfg.include_header) {
     // following is to manupulate the output format from original prof2
+    // locate a random directory in the scan_dir
     auto first_run = (*(std::filesystem::directory_iterator(cfg.scan_dir) |
                         std::views::filter([](auto &dir_entry) {
                           return dir_entry.is_directory();
